@@ -136,6 +136,24 @@ let isDragging = false;
 let startX = 0;
 let startY = 0;
 
+// --- Helper Functions for Saved Active Chats ---
+function loadSavedChatUsers() {
+  if (!currentUser) return;
+  const saved = localStorage.getItem('saved_chats_' + currentUser.uid);
+  if (saved) {
+    try {
+      const arr = JSON.parse(saved);
+      arr.forEach(id => activeChatUserIds.add(id));
+    } catch(e){}
+  }
+}
+
+function saveChatUser(id) {
+  if (!currentUser || !id) return;
+  activeChatUserIds.add(id);
+  localStorage.setItem('saved_chats_' + currentUser.uid, JSON.stringify(Array.from(activeChatUserIds)));
+}
+
 // --- 1. AUTHENTICATION ---
 
 toggleAuthBtn.onclick = (e) => {
@@ -156,7 +174,7 @@ authForm.onsubmit = (e) => {
 
   if (isSignUpMode) {
     auth.createUserWithEmailAndPassword(email, password).then((cred) => {
-      const defaultImg = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop";
+      const defaultImg = "https://github.com/nafisahmedratul-sketch/execute-programmes-using-variables-and-operators/blob/main/aaa.jpg?raw=true";
       db.ref('users/' + cred.user.uid).set({
         uid: cred.user.uid,
         name: name,
@@ -175,6 +193,8 @@ auth.onAuthStateChanged((user) => {
     currentUser = user;
     authOverlay.classList.add('hidden');
     appContainer.classList.remove('hidden');
+
+    loadSavedChatUsers();
 
     db.ref('users/' + user.uid).on('value', (snapshot) => {
       const userData = snapshot.val();
@@ -235,12 +255,13 @@ function loadSidebarAndUnreadCounts() {
     const chats = val.chats || {};
 
     unreadCounts = {};
-    activeChatUserIds.clear();
 
     Object.keys(chats).forEach(roomKey => {
       if (roomKey.includes(currentUser.uid)) {
         const otherUserId = roomKey.replace(currentUser.uid, '').replace('_', '');
-        if (otherUserId) activeChatUserIds.add(otherUserId);
+        if (otherUserId) {
+          saveChatUser(otherUserId);
+        }
 
         let count = 0;
         const msgs = chats[roomKey];
@@ -284,7 +305,7 @@ function renderSidebar() {
     }
   });
 
-  // Render Users (Privately: Fixed Chats OR Searched Users)
+  // Render Users (Privately: Fixed Chats OR Active Searched Users)
   Object.keys(cacheUsers).forEach(uId => {
     if (uId === currentUser.uid) return;
     const u = cacheUsers[uId];
@@ -295,7 +316,7 @@ function renderSidebar() {
       (u.uid && u.uid.toLowerCase().includes(query))
     );
 
-    // PRIVACY FEATURE: Shows ONLY if user was previously interacted with OR matches active search query
+    // PRIVACY PRINCIPLE: Only display if search matches OR if previously chatted/saved
     if (isExistingChat || matchQuery) {
       const unreadCount = unreadCounts[uId] || 0;
       const isBlockedByMe = !!myBlockedList[uId];
@@ -312,13 +333,20 @@ function renderSidebar() {
           <span class="status-text">${u.status || 'offline'}</span>
         </div>
       `;
-      item.onclick = () => selectChatTarget(uId, u.name, u.photoURL, false);
+      item.onclick = () => {
+        saveChatUser(uId); // Fix ID in sidebar permanently once clicked
+        selectChatTarget(uId, u.name, u.photoURL, false);
+      };
       userList.appendChild(item);
     }
   });
 
   if (userList.children.length === 0) {
-    userList.innerHTML = `<div class="empty-notice" style="padding: 15px;">> Search user ID or name to start chat</div>`;
+    if (query) {
+      userList.innerHTML = `<div class="empty-notice" style="padding: 15px;">> No user found matching ID or name</div>`;
+    } else {
+      userList.innerHTML = `<div class="empty-notice" style="padding: 15px;">> Search user ID or name to start chat</div>`;
+    }
   }
 }
 
@@ -576,9 +604,9 @@ function sendMsg() {
     msgInput.value = '';
     cancelReply();
 
-    // Automatically add to active chats list
+    // Fix user ID permanently in sidebar
     if (!isGroupChat) {
-      activeChatUserIds.add(activeTargetId);
+      saveChatUser(activeTargetId);
       renderSidebar();
     }
   });
@@ -843,6 +871,7 @@ imgUpload.onchange = (e) => {
       type: 'image',
       read: false
     });
+    if (!isGroupChat) saveChatUser(activeTargetId);
   };
   reader.readAsDataURL(file);
 };
@@ -863,6 +892,8 @@ sendCodeBtn.onclick = () => {
     type: 'code',
     read: false
   });
+
+  if (!isGroupChat) saveChatUser(activeTargetId);
 
   codeTextArea.value = '';
   codeModal.classList.add('hidden');
