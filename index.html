@@ -3,8 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PulseChat - Realtime Messenger</title>
+  <title>PulseChat - Hacker Terminal Edition</title>
   <link rel="stylesheet" href="style.css" />
+  <!-- Google Fonts for Terminal/Hacker Look -->
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600;700&display=swap" rel="stylesheet">
   <!-- Font Awesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
   
@@ -18,32 +20,38 @@
   <!-- Top Creator Banner -->
   <header class="creator-header">
     <div class="creator-badge">
-      <i class="fa-solid fa-code"></i> Developed by <span>Nafis Ahmed Ratul</span>
+      <i class="fa-solid fa-terminal"></i> SYSTEM_INITIALIZED // Developed by <span>Nafis Ahmed Ratul</span>
     </div>
   </header>
 
-  <!-- Auth Screen (Login / Signup) -->
+  <!-- Auth Screen -->
   <div class="auth-overlay" id="authOverlay">
     <div class="auth-card">
-      <h2 id="authTitle">Sign In</h2>
+      <div class="terminal-bar">
+        <span class="dot red"></span>
+        <span class="dot yellow"></span>
+        <span class="dot green"></span>
+        <span class="title">auth_gateway.exe</span>
+      </div>
+      <h2 id="authTitle">> SYSTEM_LOGIN</h2>
       <form id="authForm">
         <div class="input-group" id="nameGroup" style="display: none;">
-          <label>Full Name</label>
-          <input type="text" id="authName" placeholder="Your Name" />
+          <label>[USER_ALIAS]</label>
+          <input type="text" id="authName" placeholder="Enter handle..." />
         </div>
         <div class="input-group">
-          <label>Email</label>
-          <input type="email" id="authEmail" required placeholder="name@email.com" />
+          <label>[ACCESS_EMAIL]</label>
+          <input type="email" id="authEmail" required placeholder="user@root.net" />
         </div>
         <div class="input-group">
-          <label>Password</label>
+          <label>[ACCESS_KEY]</label>
           <input type="password" id="authPassword" required placeholder="••••••••" />
         </div>
-        <button type="submit" class="primary-btn" id="authBtn">Sign In</button>
+        <button type="submit" class="primary-btn" id="authBtn">EXECUTE_LOGIN</button>
       </form>
       <p class="auth-toggle">
-        <span id="toggleText">Don't have an account?</span> 
-        <a href="#" id="toggleAuthBtn">Sign Up</a>
+        <span id="toggleText">New access node?</span> 
+        <a href="#" id="toggleAuthBtn">REGISTER_USER</a>
       </p>
     </div>
   </div>
@@ -57,10 +65,10 @@
         <div class="my-profile" id="openProfileBtn">
           <img src="https://via.placeholder.com/100" id="myAvatar" class="avatar" />
         </div>
-        <h3 id="myName">User Name</h3>
+        <h3 id="myName">root@user</h3>
         <div class="actions">
-          <button class="icon-btn" id="editProfileBtn" title="Edit Profile"><i class="fa-solid fa-user-pen"></i></button>
-          <button class="icon-btn" id="logoutBtn" title="Logout"><i class="fa-solid fa-right-from-bracket"></i></button>
+          <button class="icon-btn" id="editProfileBtn" title="Edit Profile"><i class="fa-solid fa-user-gear"></i></button>
+          <button class="icon-btn" id="logoutBtn" title="Logout"><i class="fa-solid fa-power-off"></i></button>
         </div>
       </div>
 
@@ -76,29 +84,29 @@
         <div class="active-user-info">
           <img src="https://via.placeholder.com/100" id="activeAvatar" class="avatar" />
           <div>
-            <h4 id="activeName">Select a user to chat</h4>
-            <span class="status-text" id="activeStatus">Offline</span>
+            <h4 id="activeName">> SELECT_NODE</h4>
+            <span class="status-text" id="activeStatus">OFFLINE</span>
           </div>
         </div>
       </div>
 
       <!-- Messages Stream -->
       <div class="messages-box" id="messagesBox">
-        <div class="empty-notice">Select any contact to start messaging.</div>
+        <div class="empty-notice">> Connection established. Select a target node to initiate data transfer.</div>
       </div>
 
       <!-- Quick Media Upload Menu -->
       <div class="attachment-menu hidden" id="attachMenu">
-        <label for="imgUpload" class="attach-item"><i class="fa-solid fa-image"></i> Send Image</label>
+        <label for="imgUpload" class="attach-item"><i class="fa-solid fa-file-image"></i> TRANSMIT_PAYLOAD_IMG</label>
         <input type="file" id="imgUpload" accept="image/*" hidden />
-        <button class="attach-item" id="createPollBtn"><i class="fa-solid fa-square-poll-vertical"></i> Create Poll</button>
+        <button class="attach-item" id="createPollBtn"><i class="fa-solid fa-square-poll-vertical"></i> INITIATE_POLL</button>
       </div>
 
       <!-- Chat Input Area -->
       <div class="chat-input-bar">
         <button class="icon-btn" id="attachBtn"><i class="fa-solid fa-paperclip"></i></button>
-        <input type="text" id="msgInput" placeholder="Type a message..." disabled />
-        <button class="send-btn" id="sendBtn" disabled><i class="fa-solid fa-paper-plane"></i></button>
+        <input type="text" id="msgInput" placeholder="Type encrypted message..." disabled />
+        <button class="send-btn" id="sendBtn" disabled><i class="fa-solid fa-terminal"></i></button>
       </div>
     </main>
 
@@ -107,25 +115,31 @@
   <!-- Profile Modal -->
   <div class="modal-overlay hidden" id="profileModal">
     <div class="modal-card">
+      <div class="terminal-bar">
+        <span class="dot red"></span>
+        <span class="dot yellow"></span>
+        <span class="dot green"></span>
+        <span class="title">config_user.sh</span>
+      </div>
       <div class="modal-header">
-        <h3>Edit Profile</h3>
+        <h3>> CONFIG_USER_DATA</h3>
         <button class="icon-btn" id="closeModal"><i class="fa-solid fa-xmark"></i></button>
       </div>
       <form id="profileForm">
         <div class="avatar-edit">
           <img src="https://via.placeholder.com/100" id="modalAvatarPreview" />
-          <label for="newAvatarInput" class="upload-badge"><i class="fa-solid fa-camera"></i></label>
+          <label for="newAvatarInput" class="upload-badge"><i class="fa-solid fa-upload"></i></label>
           <input type="file" id="newAvatarInput" hidden accept="image/*" />
         </div>
         <div class="input-group">
-          <label>Display Name</label>
+          <label>[ALIAS_NAME]</label>
           <input type="text" id="editNameInput" />
         </div>
         <div class="input-group">
-          <label>Phone Number</label>
+          <label>[PHONE_NODE]</label>
           <input type="text" id="editPhoneInput" placeholder="+8801700000000" />
         </div>
-        <button type="submit" class="primary-btn">Save Profile</button>
+        <button type="submit" class="primary-btn">SAVE_CONFIG</button>
       </form>
     </div>
   </div>
