@@ -26,6 +26,9 @@ let currentReplyTarget = null;
 let cacheUsers = {};
 let cacheGroups = {};
 let unreadCounts = {};
+let activeChatUserIds = new Set();
+let myBlockedList = {}; 
+let whoBlockedMeList = {};
 
 // DOM Elements
 const authOverlay = document.getElementById('authOverlay');
@@ -79,10 +82,14 @@ const submitGroupBtn = document.getElementById('submitGroupBtn');
 const logoutBtn = document.getElementById('logoutBtn');
 const backBtn = document.getElementById('backBtn');
 
-// Call DOM Elements & WebRTC Variables
+// Call & Block Elements
 const callActions = document.getElementById('callActions');
 const audioCallBtn = document.getElementById('audioCallBtn');
 const videoCallBtn = document.getElementById('videoCallBtn');
+const blockBtn = document.getElementById('blockBtn');
+const blockNoticeBar = document.getElementById('blockNoticeBar');
+const blockNoticeText = document.getElementById('blockNoticeText');
+
 const callOverlay = document.getElementById('callOverlay');
 const callStatusTitle = document.getElementById('callStatusTitle');
 const localVideo = document.getElementById('localVideo');
@@ -105,19 +112,18 @@ const rtcConfig = {
   ]
 };
 
-// Reply Elements
+// Reply & Image Viewer
 const replyPreviewBar = document.getElementById('replyPreviewBar');
 const replyTitle = document.getElementById('replyTitle');
 const replyText = document.getElementById('replyText');
 const cancelReplyBtn = document.getElementById('cancelReplyBtn');
 
-// Image Viewer Elements
 const imageModal = document.getElementById('imageModal');
 const fullImagePreview = document.getElementById('fullImagePreview');
 const downloadImageBtn = document.getElementById('downloadImageBtn');
 const closeImageModal = document.getElementById('closeImageModal');
 
-// Cropper & Zoom Variables
+// Cropper
 const cropBox = document.getElementById('cropBox');
 const zoomControls = document.getElementById('zoomControls');
 const zoomSlider = document.getElementById('zoomSlider');
@@ -181,6 +187,7 @@ auth.onAuthStateChanged((user) => {
     db.ref('users/' + user.uid).update({ status: 'online' });
     db.ref('users/' + user.uid).onDisconnect().update({ status: 'offline' });
 
+    listenForBlocks();
     loadSidebarAndUnreadCounts();
     listenForIncomingCalls();
   } else {
@@ -197,7 +204,28 @@ logoutBtn.onclick = () => {
   }
 };
 
-// --- 2. SIDEBAR WITH UNREAD COUNTER ---
+// --- BLOCK / UNBLOCK TRACKING ---
+
+function listenForBlocks() {
+  db.ref('blocks/' + currentUser.uid).on('value', (snap) => {
+    myBlockedList = snap.val() || {};
+    checkCurrentBlockStatus();
+    renderSidebar();
+  });
+
+  db.ref('blocks').on('value', (snap) => {
+    const allBlocks = snap.val() || {};
+    whoBlockedMeList = {};
+    Object.keys(allBlocks).forEach(blockerId => {
+      if (allBlocks[blockerId] && allBlocks[blockerId][currentUser.uid]) {
+        whoBlockedMeList[blockerId] = true;
+      }
+    });
+    checkCurrentBlockStatus();
+  });
+}
+
+// --- 2. FIXED SIDEBAR CHAT LIST & PRIVACY SEARCH ---
 
 function loadSidebarAndUnreadCounts() {
   db.ref().on('value', (snapshot) => {
@@ -207,9 +235,13 @@ function loadSidebarAndUnreadCounts() {
     const chats = val.chats || {};
 
     unreadCounts = {};
+    activeChatUserIds.clear();
+
     Object.keys(chats).forEach(roomKey => {
       if (roomKey.includes(currentUser.uid)) {
         const otherUserId = roomKey.replace(currentUser.uid, '').replace('_', '');
+        if (otherUserId) activeChatUserIds.add(otherUserId);
+
         let count = 0;
         const msgs = chats[roomKey];
         Object.keys(msgs).forEach(msgKey => {
@@ -230,7 +262,7 @@ function renderSidebar() {
   const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
   userList.innerHTML = '';
 
-  // Render Groups First
+  // Render Groups
   Object.keys(cacheGroups).forEach(gId => {
     const g = cacheGroups[gId];
     if (g.members && g.members[currentUser.uid]) {
@@ -252,36 +284,41 @@ function renderSidebar() {
     }
   });
 
-  // Render Direct Users
+  // Render Users (Privately: Fixed Chats OR Searched Users)
   Object.keys(cacheUsers).forEach(uId => {
+    if (uId === currentUser.uid) return;
     const u = cacheUsers[uId];
-    if (uId !== currentUser.uid) {
-      const matchName = u.name && u.name.toLowerCase().includes(query);
-      const matchId = u.uid && u.uid.toLowerCase().includes(query);
 
-      if (!query || matchName || matchId) {
-        const unreadCount = unreadCounts[uId] || 0;
-        const item = document.createElement('div');
-        item.className = `user-item ${activeTargetId === uId ? 'active' : ''}`;
-        
-        item.innerHTML = `
-          <img src="${u.photoURL}" class="avatar" />
-          <div class="user-details">
-            <div class="user-title-row">
-              <h4>${u.name}</h4>
-              ${unreadCount > 0 ? `<span class="unseen-badge">${unreadCount} unseen</span>` : ''}
-            </div>
-            <span class="status-text">${u.status || 'offline'}</span>
+    const isExistingChat = activeChatUserIds.has(uId);
+    const matchQuery = query && (
+      (u.name && u.name.toLowerCase().includes(query)) ||
+      (u.uid && u.uid.toLowerCase().includes(query))
+    );
+
+    // PRIVACY FEATURE: Shows ONLY if user was previously interacted with OR matches active search query
+    if (isExistingChat || matchQuery) {
+      const unreadCount = unreadCounts[uId] || 0;
+      const isBlockedByMe = !!myBlockedList[uId];
+      const item = document.createElement('div');
+      item.className = `user-item ${activeTargetId === uId ? 'active' : ''}`;
+      
+      item.innerHTML = `
+        <img src="${u.photoURL}" class="avatar" />
+        <div class="user-details">
+          <div class="user-title-row">
+            <h4>${u.name} ${isBlockedByMe ? '<span class="blocked-tag">[BLOCKED]</span>' : ''}</h4>
+            ${unreadCount > 0 ? `<span class="unseen-badge">${unreadCount} unseen</span>` : ''}
           </div>
-        `;
-        item.onclick = () => selectChatTarget(uId, u.name, u.photoURL, false);
-        userList.appendChild(item);
-      }
+          <span class="status-text">${u.status || 'offline'}</span>
+        </div>
+      `;
+      item.onclick = () => selectChatTarget(uId, u.name, u.photoURL, false);
+      userList.appendChild(item);
     }
   });
 
   if (userList.children.length === 0) {
-    userList.innerHTML = `<div class="empty-notice" style="padding: 15px;">> No node found matching query</div>`;
+    userList.innerHTML = `<div class="empty-notice" style="padding: 15px;">> Search user ID or name to start chat</div>`;
   }
 }
 
@@ -294,8 +331,6 @@ function selectChatTarget(id, name, avatar, isGroup) {
   isGroupChat = isGroup;
   activeName.innerText = "> " + name;
   activeAvatar.src = avatar;
-  msgInput.disabled = false;
-  sendBtn.disabled = false;
 
   if (isGroup) {
     callActions.classList.add('hidden');
@@ -304,7 +339,6 @@ function selectChatTarget(id, name, avatar, isGroup) {
   }
 
   cancelReply();
-
   appContainer.classList.add('mobile-active');
 
   if (!isGroup) {
@@ -316,10 +350,72 @@ function selectChatTarget(id, name, avatar, isGroup) {
     activeStatus.innerText = "CLUSTER_ACTIVE";
   }
 
+  checkCurrentBlockStatus();
   listenMessages();
 }
 
-// --- 3. MESSAGING, REPLY & FULL IMAGE PREVIEW ---
+// --- BLOCK / UNBLOCK CHECK ---
+
+function checkCurrentBlockStatus() {
+  if (!activeTargetId || isGroupChat) {
+    blockNoticeBar.classList.add('hidden');
+    msgInput.disabled = false;
+    sendBtn.disabled = false;
+    attachBtn.disabled = false;
+    audioCallBtn.disabled = false;
+    videoCallBtn.disabled = false;
+    return;
+  }
+
+  const isIBlocked = !!myBlockedList[activeTargetId];
+  const isTheyBlocked = !!whoBlockedMeList[activeTargetId];
+
+  if (isIBlocked) {
+    blockBtn.innerHTML = `<i class="fa-solid fa-shield-cat" style="color:#ff0055;"></i>`;
+    blockBtn.title = "Unblock User";
+    blockNoticeText.innerText = "> YOU HAVE BLOCKED THIS USER";
+    blockNoticeBar.classList.remove('hidden');
+    disableChatControls(true);
+  } else if (isTheyBlocked) {
+    blockBtn.innerHTML = `<i class="fa-solid fa-shield-halved"></i>`;
+    blockBtn.title = "Block User";
+    blockNoticeText.innerText = "> ACCESS RESTRICTED BY NODE";
+    blockNoticeBar.classList.remove('hidden');
+    disableChatControls(true);
+  } else {
+    blockBtn.innerHTML = `<i class="fa-solid fa-shield-halved"></i>`;
+    blockBtn.title = "Block User";
+    blockNoticeBar.classList.add('hidden');
+    disableChatControls(false);
+  }
+}
+
+function disableChatControls(disabled) {
+  msgInput.disabled = disabled;
+  sendBtn.disabled = disabled;
+  attachBtn.disabled = disabled;
+  audioCallBtn.disabled = disabled;
+  videoCallBtn.disabled = disabled;
+}
+
+blockBtn.onclick = () => {
+  if (!activeTargetId || isGroupChat) return;
+
+  const isIBlocked = !!myBlockedList[activeTargetId];
+  if (isIBlocked) {
+    db.ref(`blocks/${currentUser.uid}/${activeTargetId}`).remove().then(() => {
+      alert("USER_UNBLOCKED");
+    });
+  } else {
+    if (confirm("Block this user? They will not be able to send messages or call you.")) {
+      db.ref(`blocks/${currentUser.uid}/${activeTargetId}`).set(true).then(() => {
+        alert("USER_BLOCKED");
+      });
+    }
+  }
+};
+
+// --- 3. MESSAGING & REPLIES ---
 
 function getRoomPath() {
   if (isGroupChat) return `group_chats/${activeTargetId}`;
@@ -426,7 +522,6 @@ function copyCodeText(text, btn) {
   setTimeout(() => btn.innerText = "Copy Code", 1500);
 }
 
-// Reply Functionalities
 function initiateReply(senderName, text) {
   currentReplyTarget = { senderName, text };
   replyTitle.innerText = `Replying to ${senderName}`;
@@ -442,7 +537,6 @@ function cancelReply() {
   replyPreviewBar.classList.add('hidden');
 }
 
-// Full Image Viewer Modal
 function openImageViewer(url) {
   fullImagePreview.src = url;
   downloadImageBtn.href = url;
@@ -457,6 +551,10 @@ msgInput.onkeypress = (e) => { if (e.key === 'Enter') sendMsg(); };
 function sendMsg() {
   const txt = msgInput.value.trim();
   if (!txt || !activeTargetId) return;
+
+  if (myBlockedList[activeTargetId] || whoBlockedMeList[activeTargetId]) {
+    return alert("[RESTRICTED]: Cannot send message due to block.");
+  }
 
   db.ref('users/' + currentUser.uid).once('value').then((snap) => {
     const uData = snap.val() || {};
@@ -477,16 +575,26 @@ function sendMsg() {
     db.ref(getRoomPath()).push(payload);
     msgInput.value = '';
     cancelReply();
+
+    // Automatically add to active chats list
+    if (!isGroupChat) {
+      activeChatUserIds.add(activeTargetId);
+      renderSidebar();
+    }
   });
 }
 
-// --- 4. AUDIO & VIDEO CALLING SYSTEM (WebRTC + Firebase Signaling) ---
+// --- 4. CALLING SYSTEM ---
 
 audioCallBtn.onclick = () => startCall('audio');
 videoCallBtn.onclick = () => startCall('video');
 
 async function startCall(type) {
   if (!activeTargetId || isGroupChat) return;
+
+  if (myBlockedList[activeTargetId] || whoBlockedMeList[activeTargetId]) {
+    return alert("[RESTRICTED]: Call blocked.");
+  }
 
   activeCallType = type;
   const targetUser = cacheUsers[activeTargetId] || {};
@@ -544,7 +652,6 @@ async function startCall(type) {
       }
     });
 
-    // Listen for Answer
     currentCallRef.on('value', (snap) => {
       const callData = snap.val();
       if (!callData) {
@@ -563,7 +670,6 @@ async function startCall(type) {
       }
     });
 
-    // Listen for Receiver Candidates
     currentCallRef.child('receiverCandidates').on('child_added', (snap) => {
       const candidate = new RTCIceCandidate(snap.val());
       peerConnection.addIceCandidate(candidate);
@@ -581,10 +687,15 @@ function listenForIncomingCalls() {
     const callKey = snap.key;
 
     if (callData && callData.receiverId === currentUser.uid && callData.status === 'calling') {
+      const callerId = callData.callerId;
+      if (myBlockedList[callerId] || whoBlockedMeList[callerId]) {
+        return; 
+      }
+
       currentCallRef = db.ref('calls/' + callKey);
       activeCallType = callData.type;
 
-      const callerUser = cacheUsers[callData.callerId] || {};
+      const callerUser = cacheUsers[callerId] || {};
       setupCallUI(callData.type, callerUser.name || 'User', callerUser.photoURL, '> INCOMING_CALL...');
 
       acceptCallBtn.classList.remove('hidden');
@@ -711,7 +822,7 @@ function setupCallUI(type, name, photo, status) {
   }
 }
 
-// --- 5. ATTACHMENT MENU ---
+// --- 5. ATTACHMENTS, GROUPS & PROFILE ---
 
 attachBtn.onclick = (e) => {
   e.stopPropagation();
@@ -757,8 +868,6 @@ sendCodeBtn.onclick = () => {
   codeModal.classList.add('hidden');
 };
 
-// --- 6. GROUPS ---
-
 createGroupBtn.onclick = () => {
   db.ref('users').once('value').then((snap) => {
     groupMemberList.innerHTML = '';
@@ -802,8 +911,6 @@ submitGroupBtn.onclick = () => {
     alert("Group Cluster Created Successfully!");
   });
 };
-
-// --- 7. PROFILE CONFIG ---
 
 editProfileBtn.onclick = () => {
   db.ref('users/' + currentUser.uid).once('value').then((snapshot) => {
