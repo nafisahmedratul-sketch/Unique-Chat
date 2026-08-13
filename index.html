@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PulseChat - Realtime Messenger</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- Font Awesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  
+  <!-- Firebase Compatibility SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+</head>
+<body>
+
+  <!-- Top Creator Banner -->
+  <header class="creator-header">
+    <div class="creator-badge">
+      <i class="fa-solid fa-code"></i> Developed by <span>Nafis Ahmed Ratul</span>
+    </div>
+  </header>
+
+  <!-- Auth Screen (Login / Signup) -->
+  <div class="auth-overlay" id="authOverlay">
+    <div class="auth-card">
+      <h2 id="authTitle">Sign In</h2>
+      <form id="authForm">
+        <div class="input-group" id="nameGroup" style="display: none;">
+          <label>Full Name</label>
+          <input type="text" id="authName" placeholder="Your Name" />
+        </div>
+        <div class="input-group">
+          <label>Email</label>
+          <input type="email" id="authEmail" required placeholder="name@email.com" />
+        </div>
+        <div class="input-group">
+          <label>Password</label>
+          <input type="password" id="authPassword" required placeholder="••••••••" />
+        </div>
+        <button type="submit" class="primary-btn" id="authBtn">Sign In</button>
+      </form>
+      <p class="auth-toggle">
+        <span id="toggleText">Don't have an account?</span> 
+        <a href="#" id="toggleAuthBtn">Sign Up</a>
+      </p>
+    </div>
+  </div>
+
+  <!-- Main App Layout -->
+  <div class="app-container hidden" id="appContainer">
+
+    <!-- Left Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="my-profile" id="openProfileBtn">
+          <img src="https://via.placeholder.com/100" id="myAvatar" class="avatar" />
+        </div>
+        <h3 id="myName">User Name</h3>
+        <div class="actions">
+          <button class="icon-btn" id="editProfileBtn" title="Edit Profile"><i class="fa-solid fa-user-pen"></i></button>
+          <button class="icon-btn" id="logoutBtn" title="Logout"><i class="fa-solid fa-right-from-bracket"></i></button>
+        </div>
+      </div>
+
+      <div class="user-list" id="userList">
+        <!-- Live users will load here -->
+      </div>
+    </aside>
+
+    <!-- Main Chat Window -->
+    <main class="chat-window">
+      <div class="chat-header">
+        <button class="icon-btn back-btn" id="backBtn"><i class="fa-solid fa-arrow-left"></i></button>
+        <div class="active-user-info">
+          <img src="https://via.placeholder.com/100" id="activeAvatar" class="avatar" />
+          <div>
+            <h4 id="activeName">Select a user to chat</h4>
+            <span class="status-text" id="activeStatus">Offline</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Messages Stream -->
+      <div class="messages-box" id="messagesBox">
+        <div class="empty-notice">Select any contact to start messaging.</div>
+      </div>
+
+      <!-- Quick Media Upload Menu -->
+      <div class="attachment-menu hidden" id="attachMenu">
+        <label for="imgUpload" class="attach-item"><i class="fa-solid fa-image"></i> Send Image</label>
+        <input type="file" id="imgUpload" accept="image/*" hidden />
+        <button class="attach-item" id="createPollBtn"><i class="fa-solid fa-square-poll-vertical"></i> Create Poll</button>
+      </div>
+
+      <!-- Chat Input Area -->
+      <div class="chat-input-bar">
+        <button class="icon-btn" id="attachBtn"><i class="fa-solid fa-paperclip"></i></button>
+        <input type="text" id="msgInput" placeholder="Type a message..." disabled />
+        <button class="send-btn" id="sendBtn" disabled><i class="fa-solid fa-paper-plane"></i></button>
+      </div>
+    </main>
+
+  </div>
+
+  <!-- Profile Modal -->
+  <div class="modal-overlay hidden" id="profileModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Edit Profile</h3>
+        <button class="icon-btn" id="closeModal"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <form id="profileForm">
+        <div class="avatar-edit">
+          <img src="https://via.placeholder.com/100" id="modalAvatarPreview" />
+          <label for="newAvatarInput" class="upload-badge"><i class="fa-solid fa-camera"></i></label>
+          <input type="file" id="newAvatarInput" hidden accept="image/*" />
+        </div>
+        <div class="input-group">
+          <label>Display Name</label>
+          <input type="text" id="editNameInput" />
+        </div>
+        <div class="input-group">
+          <label>Phone Number</label>
+          <input type="text" id="editPhoneInput" placeholder="+8801700000000" />
+        </div>
+        <button type="submit" class="primary-btn">Save Profile</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
