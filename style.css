@@ -131,6 +131,12 @@ body {
 }
 .user-item h4 { font-size: 0.85rem; color: #fff; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
 
+.blocked-tag {
+  color: var(--danger-red);
+  font-size: 0.7rem;
+  margin-left: 5px;
+}
+
 .unseen-badge {
   font-size: 0.68rem;
   color: #000;
@@ -152,10 +158,21 @@ body {
 .status-text { font-size: 0.7rem; color: var(--text-muted); }
 .back-btn { display: none; }
 
-/* Call Buttons styling */
+/* Call & Block Buttons styling */
 .call-actions { display: flex; gap: 10px; align-items: center; }
 .call-btn { color: var(--primary); font-size: 1.1rem; padding: 6px; border-radius: 4px; transition: 0.2s; }
 .call-btn:hover { background: rgba(0, 255, 102, 0.2); }
+
+/* Block Notice Bar */
+.block-notice-bar {
+  background: rgba(255, 0, 85, 0.2);
+  border-bottom: 1px solid var(--danger-red);
+  padding: 6px 12px;
+  text-align: center;
+  color: var(--danger-red);
+  font-size: 0.75rem;
+  font-weight: bold;
+}
 
 .messages-box { 
   flex: 1 1 auto; 
