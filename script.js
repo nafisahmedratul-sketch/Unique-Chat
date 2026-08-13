@@ -80,8 +80,8 @@ authForm.addEventListener('submit', (e) => {
   if (isSignUpMode) {
     auth.createUserWithEmailAndPassword(email, password).then((cred) => {
       const defaultImg = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop";
-      cred.user.updateProfile({ displayName: name, photoURL: defaultImg });
       
+      // Save directly to Realtime Database
       db.ref('users/' + cred.user.uid).set({
         uid: cred.user.uid,
         name: name,
@@ -101,8 +101,14 @@ auth.onAuthStateChanged((user) => {
     authOverlay.classList.add('hidden');
     appContainer.classList.remove('hidden');
 
-    myName.innerText = user.displayName || "root@user";
-    myAvatar.src = user.photoURL || "https://via.placeholder.com/100";
+    // Fetch user profile info directly from Realtime Database
+    db.ref('users/' + user.uid).on('value', (snapshot) => {
+      const userData = snapshot.val();
+      if (userData) {
+        myName.innerText = userData.name || "root@user";
+        myAvatar.src = userData.photoURL || "https://via.placeholder.com/100";
+      }
+    });
 
     db.ref('users/' + user.uid).update({ status: 'online' });
     db.ref('users/' + user.uid).onDisconnect().update({ status: 'offline' });
@@ -282,13 +288,17 @@ createPollBtn.onclick = () => {
   }
 };
 
-// --- 5. EDIT PROFILE (FIXED SAVE BUTTON) ---
+// --- 5. EDIT PROFILE (ERROR FIXED) ---
 
 editProfileBtn.onclick = () => {
-  editNameInput.value = currentUser.displayName || '';
-  modalAvatarPreview.src = currentUser.photoURL || '';
-  tempAvatarBase64 = null;
-  profileModal.classList.remove('hidden');
+  db.ref('users/' + currentUser.uid).once('value').then((snapshot) => {
+    const userData = snapshot.val() || {};
+    editNameInput.value = userData.name || '';
+    modalAvatarPreview.src = userData.photoURL || '';
+    editPhoneInput.value = userData.phone || '';
+    tempAvatarBase64 = null;
+    profileModal.classList.remove('hidden');
+  });
 };
 
 closeModal.onclick = () => profileModal.classList.add('hidden');
@@ -305,31 +315,22 @@ newAvatarInput.onchange = (e) => {
   }
 };
 
+// Save button click logic - Perfectly Fixed
 profileForm.onsubmit = async (e) => {
   e.preventDefault();
   
-  const newName = editNameInput.value.trim() || currentUser.displayName;
-  const imgUrl = tempAvatarBase64 || currentUser.photoURL;
+  const newName = editNameInput.value.trim() || myName.innerText;
+  const imgUrl = tempAvatarBase64 || modalAvatarPreview.src;
 
   try {
-    // 1. Update Firebase Auth Profile
-    await currentUser.updateProfile({ 
-      displayName: newName, 
-      photoURL: imgUrl 
-    });
-
-    // 2. Update Realtime Database
+    // Save directly to Realtime Database
     await db.ref('users/' + currentUser.uid).update({
       name: newName,
       photoURL: imgUrl,
       phone: editPhoneInput.value.trim() || ''
     });
 
-    // 3. Update UI instantly
-    myName.innerText = newName;
-    myAvatar.src = imgUrl;
-
-    // 4. Close Modal
+    // Close Modal
     profileModal.classList.add('hidden');
     alert("[SYSTEM_NOTICE]: Config updated successfully!");
 
