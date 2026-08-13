@@ -21,6 +21,7 @@ let activeTargetId = null;
 let isGroupChat = false;
 let isSignUpMode = false;
 let tempAvatarBase64 = null;
+let currentReplyTarget = null; 
 
 let cacheUsers = {};
 let cacheGroups = {};
@@ -78,6 +79,57 @@ const submitGroupBtn = document.getElementById('submitGroupBtn');
 const logoutBtn = document.getElementById('logoutBtn');
 const backBtn = document.getElementById('backBtn');
 
+// Call DOM Elements & WebRTC Variables
+const callActions = document.getElementById('callActions');
+const audioCallBtn = document.getElementById('audioCallBtn');
+const videoCallBtn = document.getElementById('videoCallBtn');
+const callOverlay = document.getElementById('callOverlay');
+const callStatusTitle = document.getElementById('callStatusTitle');
+const localVideo = document.getElementById('localVideo');
+const remoteVideo = document.getElementById('remoteVideo');
+const audioCallAvatar = document.getElementById('audioCallAvatar');
+const callUserImg = document.getElementById('callUserImg');
+const callUserName = document.getElementById('callUserName');
+const acceptCallBtn = document.getElementById('acceptCallBtn');
+const endCallBtn = document.getElementById('endCallBtn');
+
+let peerConnection = null;
+let localStream = null;
+let currentCallRef = null;
+let activeCallType = null;
+
+const rtcConfig = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' }
+  ]
+};
+
+// Reply Elements
+const replyPreviewBar = document.getElementById('replyPreviewBar');
+const replyTitle = document.getElementById('replyTitle');
+const replyText = document.getElementById('replyText');
+const cancelReplyBtn = document.getElementById('cancelReplyBtn');
+
+// Image Viewer Elements
+const imageModal = document.getElementById('imageModal');
+const fullImagePreview = document.getElementById('fullImagePreview');
+const downloadImageBtn = document.getElementById('downloadImageBtn');
+const closeImageModal = document.getElementById('closeImageModal');
+
+// Cropper & Zoom Variables
+const cropBox = document.getElementById('cropBox');
+const zoomControls = document.getElementById('zoomControls');
+const zoomSlider = document.getElementById('zoomSlider');
+const cropHint = document.getElementById('cropHint');
+
+let zoomLevel = 1;
+let translateX = 0;
+let translateY = 0;
+let isDragging = false;
+let startX = 0;
+let startY = 0;
+
 // --- 1. AUTHENTICATION ---
 
 toggleAuthBtn.onclick = (e) => {
@@ -130,6 +182,7 @@ auth.onAuthStateChanged((user) => {
     db.ref('users/' + user.uid).onDisconnect().update({ status: 'offline' });
 
     loadSidebarAndUnreadCounts();
+    listenForIncomingCalls();
   } else {
     authOverlay.classList.remove('hidden');
     appContainer.classList.add('hidden');
@@ -153,7 +206,6 @@ function loadSidebarAndUnreadCounts() {
     cacheGroups = val.groups || {};
     const chats = val.chats || {};
 
-    // Calculate unread messages per user
     unreadCounts = {};
     Object.keys(chats).forEach(roomKey => {
       if (roomKey.includes(currentUser.uid)) {
@@ -178,7 +230,7 @@ function renderSidebar() {
   const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
   userList.innerHTML = '';
 
-  // Render Groups
+  // Render Groups First
   Object.keys(cacheGroups).forEach(gId => {
     const g = cacheGroups[gId];
     if (g.members && g.members[currentUser.uid]) {
@@ -188,7 +240,9 @@ function renderSidebar() {
         item.innerHTML = `
           <img src="https://cdn-icons-png.flaticon.com/512/615/615075.png" class="avatar" />
           <div class="user-details">
-            <h4>👥 ${g.name}</h4>
+            <div class="user-title-row">
+              <h4>👥 ${g.name}</h4>
+            </div>
             <span class="status-text">Group Cluster</span>
           </div>
         `;
@@ -198,7 +252,7 @@ function renderSidebar() {
     }
   });
 
-  // Render Users
+  // Render Direct Users
   Object.keys(cacheUsers).forEach(uId => {
     const u = cacheUsers[uId];
     if (uId !== currentUser.uid) {
@@ -213,10 +267,12 @@ function renderSidebar() {
         item.innerHTML = `
           <img src="${u.photoURL}" class="avatar" />
           <div class="user-details">
-            <h4>${u.name}</h4>
+            <div class="user-title-row">
+              <h4>${u.name}</h4>
+              ${unreadCount > 0 ? `<span class="unseen-badge">${unreadCount} unseen</span>` : ''}
+            </div>
             <span class="status-text">${u.status || 'offline'}</span>
           </div>
-          ${unreadCount > 0 ? `<span class="unread-badge">${unreadCount}</span>` : ''}
         `;
         item.onclick = () => selectChatTarget(uId, u.name, u.photoURL, false);
         userList.appendChild(item);
@@ -241,6 +297,14 @@ function selectChatTarget(id, name, avatar, isGroup) {
   msgInput.disabled = false;
   sendBtn.disabled = false;
 
+  if (isGroup) {
+    callActions.classList.add('hidden');
+  } else {
+    callActions.classList.remove('hidden');
+  }
+
+  cancelReply();
+
   appContainer.classList.add('mobile-active');
 
   if (!isGroup) {
@@ -255,7 +319,7 @@ function selectChatTarget(id, name, avatar, isGroup) {
   listenMessages();
 }
 
-// --- 3. MESSAGING & READ TICK STATUS ---
+// --- 3. MESSAGING, REPLY & FULL IMAGE PREVIEW ---
 
 function getRoomPath() {
   if (isGroupChat) return `group_chats/${activeTargetId}`;
@@ -275,7 +339,6 @@ function listenMessages() {
       const msgKey = child.key;
       const isSent = msg.senderId === currentUser.uid;
 
-      // Update unread to read when viewing chat
       if (!isSent && !msg.read) {
         ref.child(msgKey).update({ read: true });
       }
@@ -283,13 +346,22 @@ function listenMessages() {
       const div = document.createElement('div');
       div.className = `msg-wrapper ${isSent ? 'sent' : 'received'}`;
 
+      let replyHTML = '';
+      if (msg.replyTo) {
+        replyHTML = `
+          <div class="reply-ref">
+            <span class="reply-ref-name">${escapeHTML(msg.replyTo.senderName)}</span>
+            <div class="reply-ref-text">${escapeHTML(msg.replyTo.text)}</div>
+          </div>`;
+      }
+
       let content = `<p>${escapeHTML(msg.text || '')}</p>`;
 
       if (msg.type === 'image') {
         content = `
-          <div class="img-container">
+          <div class="img-container" onclick="openImageViewer('${msg.fileUrl}')">
             <img src="${msg.fileUrl}" class="msg-img"/>
-            <a href="${msg.fileUrl}" download="payload_image.png" class="dl-btn"><i class="fa-solid fa-download"></i> SAVE</a>
+            <a href="${msg.fileUrl}" download="payload_image.png" onclick="event.stopPropagation();" class="dl-btn"><i class="fa-solid fa-download"></i> SAVE</a>
           </div>`;
       } 
       else if (msg.type === 'code') {
@@ -297,7 +369,7 @@ function listenMessages() {
           <div class="vscode-block">
             <div class="vscode-header">
               <span>📄 ${(msg.lang || 'code').toUpperCase()}</span>
-              <button class="copy-btn" onclick="copyCode(this)">Copy Code</button>
+              <button class="copy-btn" onclick="copyCodeText(\`${escapeHTML(msg.code || '')}\`, this)">Copy Code</button>
             </div>
             <pre><code class="language-${msg.lang}">${escapeHTML(msg.code || '')}</code></pre>
           </div>`;
@@ -305,23 +377,27 @@ function listenMessages() {
 
       const time = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-      // Double checkmarks icon for read status
       let statusTicks = '';
       if (isSent && !isGroupChat) {
-        if (msg.read) {
-          statusTicks = `<span class="read-status read" title="Read"><i class="fa-solid fa-check-double"></i></span>`;
-        } else {
-          statusTicks = `<span class="read-status unread" title="Sent"><i class="fa-solid fa-check"></i></span>`;
-        }
+        statusTicks = msg.read 
+          ? `<span class="read-status read" title="Read"><i class="fa-solid fa-check-double"></i></span>`
+          : `<span class="read-status unread" title="Sent"><i class="fa-solid fa-check"></i></span>`;
       }
+
+      const rawContentForCopy = msg.text || (msg.type === 'code' ? msg.code : 'Image Payload');
 
       div.innerHTML = `
         <div class="msg-bubble">
           ${isGroupChat && !isSent ? `<div class="msg-sender">${msg.senderName || 'User'}</div>` : ''}
+          ${replyHTML}
           ${content}
           <div class="msg-meta">
             <span class="msg-time">${time}</span>
             ${statusTicks}
+          </div>
+          <div class="msg-actions">
+            <button class="action-link" onclick="initiateReply('${msg.senderName || 'User'}', \`${escapeHTML(rawContentForCopy)}\`)"><i class="fa-solid fa-reply"></i> Reply</button>
+            <button class="action-link" onclick="copyTextToClipboard(\`${escapeHTML(rawContentForCopy)}\`, this)"><i class="fa-solid fa-copy"></i> Copy</button>
           </div>
         </div>
       `;
@@ -334,15 +410,46 @@ function listenMessages() {
 }
 
 function escapeHTML(str) {
-  return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return String(str || '').replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function copyCode(btn) {
-  const code = btn.parentElement.nextElementSibling.innerText;
-  navigator.clipboard.writeText(code);
-  btn.innerText = "Copied!";
-  setTimeout(() => btn.innerText = "Copy Code", 2000);
+function copyTextToClipboard(text, btn) {
+  navigator.clipboard.writeText(text);
+  const origText = btn.innerHTML;
+  btn.innerHTML = `<i class="fa-solid fa-check"></i> Copied`;
+  setTimeout(() => btn.innerHTML = origText, 1500);
 }
+
+function copyCodeText(text, btn) {
+  navigator.clipboard.writeText(text);
+  btn.innerText = "Copied!";
+  setTimeout(() => btn.innerText = "Copy Code", 1500);
+}
+
+// Reply Functionalities
+function initiateReply(senderName, text) {
+  currentReplyTarget = { senderName, text };
+  replyTitle.innerText = `Replying to ${senderName}`;
+  replyText.innerText = text;
+  replyPreviewBar.classList.remove('hidden');
+  msgInput.focus();
+}
+
+cancelReplyBtn.onclick = cancelReply;
+
+function cancelReply() {
+  currentReplyTarget = null;
+  replyPreviewBar.classList.add('hidden');
+}
+
+// Full Image Viewer Modal
+function openImageViewer(url) {
+  fullImagePreview.src = url;
+  downloadImageBtn.href = url;
+  imageModal.classList.remove('hidden');
+}
+
+closeImageModal.onclick = () => imageModal.classList.add('hidden');
 
 sendBtn.onclick = sendMsg;
 msgInput.onkeypress = (e) => { if (e.key === 'Enter') sendMsg(); };
@@ -353,19 +460,258 @@ function sendMsg() {
 
   db.ref('users/' + currentUser.uid).once('value').then((snap) => {
     const uData = snap.val() || {};
-    db.ref(getRoomPath()).push({
+    
+    const payload = {
       senderId: currentUser.uid,
       senderName: uData.name || 'User',
       text: txt,
       timestamp: Date.now(),
       type: 'text',
       read: false
-    });
+    };
+
+    if (currentReplyTarget) {
+      payload.replyTo = currentReplyTarget;
+    }
+
+    db.ref(getRoomPath()).push(payload);
     msgInput.value = '';
+    cancelReply();
   });
 }
 
-// --- 4. ATTACHMENT MENU ---
+// --- 4. AUDIO & VIDEO CALLING SYSTEM (WebRTC + Firebase Signaling) ---
+
+audioCallBtn.onclick = () => startCall('audio');
+videoCallBtn.onclick = () => startCall('video');
+
+async function startCall(type) {
+  if (!activeTargetId || isGroupChat) return;
+
+  activeCallType = type;
+  const targetUser = cacheUsers[activeTargetId] || {};
+
+  setupCallUI(type, targetUser.name || 'User', targetUser.photoURL, '> OUTGOING_CALL...');
+  acceptCallBtn.classList.add('hidden');
+  callOverlay.classList.remove('hidden');
+
+  currentCallRef = db.ref('calls').push();
+
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({
+      audio: true,
+      video: type === 'video'
+    });
+
+    if (type === 'video') {
+      localVideo.srcObject = localStream;
+      localVideo.classList.remove('hidden');
+    } else {
+      localVideo.classList.add('hidden');
+    }
+
+    peerConnection = new RTCPeerConnection(rtcConfig);
+
+    localStream.getTracks().forEach(track => {
+      peerConnection.addTrack(track, localStream);
+    });
+
+    peerConnection.ontrack = (event) => {
+      remoteVideo.srcObject = event.streams[0];
+      if (type === 'video') {
+        audioCallAvatar.classList.add('hidden');
+        remoteVideo.classList.remove('hidden');
+      }
+    };
+
+    peerConnection.onicecandidate = (event) => {
+      if (event.candidate) {
+        currentCallRef.child('callerCandidates').push(event.candidate.toJSON());
+      }
+    };
+
+    const offer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offer);
+
+    await currentCallRef.set({
+      callerId: currentUser.uid,
+      receiverId: activeTargetId,
+      type: type,
+      status: 'calling',
+      offer: {
+        type: offer.type,
+        sdp: offer.sdp
+      }
+    });
+
+    // Listen for Answer
+    currentCallRef.on('value', (snap) => {
+      const callData = snap.val();
+      if (!callData) {
+        endCallCleanly();
+        return;
+      }
+
+      if (callData.answer && !peerConnection.currentRemoteDescription) {
+        const answer = new RTCSessionDescription(callData.answer);
+        peerConnection.setRemoteDescription(answer);
+        callStatusTitle.innerText = "> CALL_CONNECTED";
+      }
+
+      if (callData.status === 'ended') {
+        endCallCleanly();
+      }
+    });
+
+    // Listen for Receiver Candidates
+    currentCallRef.child('receiverCandidates').on('child_added', (snap) => {
+      const candidate = new RTCIceCandidate(snap.val());
+      peerConnection.addIceCandidate(candidate);
+    });
+
+  } catch (err) {
+    alert("MEDIA_ERROR: Mic/Camera permission required! " + err.message);
+    endCallCleanly();
+  }
+}
+
+function listenForIncomingCalls() {
+  db.ref('calls').on('child_added', (snap) => {
+    const callData = snap.val();
+    const callKey = snap.key;
+
+    if (callData && callData.receiverId === currentUser.uid && callData.status === 'calling') {
+      currentCallRef = db.ref('calls/' + callKey);
+      activeCallType = callData.type;
+
+      const callerUser = cacheUsers[callData.callerId] || {};
+      setupCallUI(callData.type, callerUser.name || 'User', callerUser.photoURL, '> INCOMING_CALL...');
+
+      acceptCallBtn.classList.remove('hidden');
+      callOverlay.classList.remove('hidden');
+
+      currentCallRef.on('value', (s) => {
+        const d = s.val();
+        if (!d || d.status === 'ended') {
+          endCallCleanly();
+        }
+      });
+    }
+  });
+}
+
+acceptCallBtn.onclick = async () => {
+  if (!currentCallRef) return;
+
+  acceptCallBtn.classList.add('hidden');
+  callStatusTitle.innerText = "> CONNECTING...";
+
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({
+      audio: true,
+      video: activeCallType === 'video'
+    });
+
+    if (activeCallType === 'video') {
+      localVideo.srcObject = localStream;
+      localVideo.classList.remove('hidden');
+    } else {
+      localVideo.classList.add('hidden');
+    }
+
+    peerConnection = new RTCPeerConnection(rtcConfig);
+
+    localStream.getTracks().forEach(track => {
+      peerConnection.addTrack(track, localStream);
+    });
+
+    peerConnection.ontrack = (event) => {
+      remoteVideo.srcObject = event.streams[0];
+      if (activeCallType === 'video') {
+        audioCallAvatar.classList.add('hidden');
+        remoteVideo.classList.remove('hidden');
+      }
+    };
+
+    peerConnection.onicecandidate = (event) => {
+      if (event.candidate) {
+        currentCallRef.child('receiverCandidates').push(event.candidate.toJSON());
+      }
+    };
+
+    const snapshot = await currentCallRef.once('value');
+    const callData = snapshot.val();
+
+    await peerConnection.setRemoteDescription(new RTCSessionDescription(callData.offer));
+    const answer = await peerConnection.createAnswer();
+    await peerConnection.setLocalDescription(answer);
+
+    await currentCallRef.update({
+      answer: {
+        type: answer.type,
+        sdp: answer.sdp
+      },
+      status: 'connected'
+    });
+
+    callStatusTitle.innerText = "> CALL_CONNECTED";
+
+    currentCallRef.child('callerCandidates').on('child_added', (snap) => {
+      const candidate = new RTCIceCandidate(snap.val());
+      peerConnection.addIceCandidate(candidate);
+    });
+
+  } catch (err) {
+    alert("MEDIA_ERROR: Mic/Camera permission required! " + err.message);
+    endCallCleanly();
+  }
+};
+
+endCallBtn.onclick = () => {
+  if (currentCallRef) {
+    currentCallRef.update({ status: 'ended' }).then(() => {
+      endCallCleanly();
+    });
+  } else {
+    endCallCleanly();
+  }
+};
+
+function endCallCleanly() {
+  if (localStream) {
+    localStream.getTracks().forEach(track => track.stop());
+    localStream = null;
+  }
+  if (peerConnection) {
+    peerConnection.close();
+    peerConnection = null;
+  }
+  if (currentCallRef) {
+    currentCallRef.off();
+    currentCallRef.remove();
+    currentCallRef = null;
+  }
+
+  localVideo.srcObject = null;
+  remoteVideo.srcObject = null;
+  callOverlay.classList.add('hidden');
+}
+
+function setupCallUI(type, name, photo, status) {
+  callStatusTitle.innerText = status;
+  callUserName.innerText = name;
+  callUserImg.src = photo || "https://via.placeholder.com/100";
+
+  if (type === 'audio') {
+    audioCallAvatar.classList.remove('hidden');
+    remoteVideo.classList.add('hidden');
+  } else {
+    audioCallAvatar.classList.add('hidden');
+    remoteVideo.classList.remove('hidden');
+  }
+}
+
+// --- 5. ATTACHMENT MENU ---
 
 attachBtn.onclick = (e) => {
   e.stopPropagation();
@@ -411,7 +757,7 @@ sendCodeBtn.onclick = () => {
   codeModal.classList.add('hidden');
 };
 
-// --- 5. GROUPS ---
+// --- 6. GROUPS ---
 
 createGroupBtn.onclick = () => {
   db.ref('users').once('value').then((snap) => {
@@ -453,18 +799,24 @@ submitGroupBtn.onclick = () => {
   }).then(() => {
     groupModal.classList.add('hidden');
     groupNameInput.value = '';
+    alert("Group Cluster Created Successfully!");
   });
 };
 
-// --- 6. PROFILE CONFIG ---
+// --- 7. PROFILE CONFIG ---
 
 editProfileBtn.onclick = () => {
   db.ref('users/' + currentUser.uid).once('value').then((snapshot) => {
     const userData = snapshot.val() || {};
     editNameInput.value = userData.name || '';
-    modalAvatarPreview.src = userData.photoURL || '';
+    modalAvatarPreview.src = userData.photoURL || 'https://via.placeholder.com/100';
     editPhoneInput.value = userData.phone || '';
     tempAvatarBase64 = null;
+    
+    resetTransform();
+    zoomControls.classList.add('hidden');
+    cropHint.classList.add('hidden');
+    
     profileModal.classList.remove('hidden');
   });
 };
@@ -477,16 +829,82 @@ newAvatarInput.onchange = (e) => {
     const reader = new FileReader();
     reader.onload = (ev) => {
       modalAvatarPreview.src = ev.target.result;
-      tempAvatarBase64 = ev.target.result;
+      resetTransform();
+      zoomControls.classList.remove('hidden');
+      cropHint.classList.remove('hidden');
     };
     reader.readAsDataURL(file);
   }
 };
 
+function resetTransform() {
+  zoomLevel = 1;
+  translateX = 0;
+  translateY = 0;
+  if(zoomSlider) zoomSlider.value = 1;
+  applyTransform();
+}
+
+function applyTransform() {
+  modalAvatarPreview.style.transform = `translate(${translateX}px, ${translateY}px) scale(${zoomLevel})`;
+}
+
+if (zoomSlider) {
+  zoomSlider.oninput = (e) => {
+    zoomLevel = parseFloat(e.target.value);
+    applyTransform();
+  };
+}
+
+cropBox.addEventListener('mousedown', (e) => {
+  if (zoomControls.classList.contains('hidden')) return;
+  isDragging = true;
+  startX = e.clientX - translateX;
+  startY = e.clientY - translateY;
+});
+
+window.addEventListener('mousemove', (e) => {
+  if (!isDragging) return;
+  translateX = e.clientX - startX;
+  translateY = e.clientY - startY;
+  applyTransform();
+});
+
+window.addEventListener('mouseup', () => {
+  isDragging = false;
+});
+
+function getCroppedBase64() {
+  const canvas = document.createElement('canvas');
+  const size = 300;
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+
+  ctx.beginPath();
+  ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+  ctx.clip();
+
+  const scale = zoomLevel;
+  const imgWidth = size * scale;
+  const imgHeight = size * scale;
+  
+  const factor = size / 140; 
+  const drawX = (size - imgWidth) / 2 + (translateX * factor);
+  const drawY = (size - imgHeight) / 2 + (translateY * factor);
+
+  ctx.drawImage(modalAvatarPreview, drawX, drawY, imgWidth, imgHeight);
+  return canvas.toDataURL('image/jpeg', 0.9);
+}
+
 profileForm.onsubmit = async (e) => {
   e.preventDefault();
   const newName = editNameInput.value.trim() || myName.innerText;
-  const imgUrl = tempAvatarBase64 || modalAvatarPreview.src;
+  
+  let imgUrl = modalAvatarPreview.src;
+  if (!zoomControls.classList.contains('hidden')) {
+    imgUrl = getCroppedBase64();
+  }
 
   try {
     await db.ref('users/' + currentUser.uid).update({
