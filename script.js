@@ -14,11 +14,17 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.database();
 
+auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+
 let currentUser = null;
-let activeTargetId = null; // Can be UserId or GroupId
+let activeTargetId = null;
 let isGroupChat = false;
 let isSignUpMode = false;
 let tempAvatarBase64 = null;
+
+let cacheUsers = {};
+let cacheGroups = {};
+let unreadCounts = {};
 
 // DOM Elements
 const authOverlay = document.getElementById('authOverlay');
@@ -33,6 +39,7 @@ const appContainer = document.getElementById('appContainer');
 const myAvatar = document.getElementById('myAvatar');
 const myName = document.getElementById('myName');
 const userList = document.getElementById('userList');
+const searchInput = document.getElementById('searchInput');
 const messagesBox = document.getElementById('messagesBox');
 
 const activeAvatar = document.getElementById('activeAvatar');
@@ -45,7 +52,6 @@ const attachBtn = document.getElementById('attachBtn');
 const attachMenu = document.getElementById('attachMenu');
 const imgUpload = document.getElementById('imgUpload');
 const shareCodeBtn = document.getElementById('shareCodeBtn');
-const createPollBtn = document.getElementById('createPollBtn');
 
 const profileModal = document.getElementById('profileModal');
 const editProfileBtn = document.getElementById('editProfileBtn');
@@ -123,7 +129,7 @@ auth.onAuthStateChanged((user) => {
     db.ref('users/' + user.uid).update({ status: 'online' });
     db.ref('users/' + user.uid).onDisconnect().update({ status: 'offline' });
 
-    loadSidebar();
+    loadSidebarAndUnreadCounts();
   } else {
     authOverlay.classList.remove('hidden');
     appContainer.classList.add('hidden');
@@ -132,31 +138,56 @@ auth.onAuthStateChanged((user) => {
 
 logoutBtn.onclick = () => {
   if (currentUser) {
-    db.ref('users/' + currentUser.uid).update({ status: 'offline' });
-    auth.signOut();
+    db.ref('users/' + currentUser.uid).update({ status: 'offline' }).then(() => {
+      auth.signOut();
+    });
   }
 };
 
-// --- 2. SIDEBAR (USERS & GROUPS) ---
+// --- 2. SIDEBAR WITH UNREAD COUNTER ---
 
-function loadSidebar() {
-  // Load Individual Users & Groups together
+function loadSidebarAndUnreadCounts() {
   db.ref().on('value', (snapshot) => {
     const val = snapshot.val() || {};
-    const users = val.users || {};
-    const groups = val.groups || {};
+    cacheUsers = val.users || {};
+    cacheGroups = val.groups || {};
+    const chats = val.chats || {};
 
-    userList.innerHTML = '';
+    // Calculate unread messages per user
+    unreadCounts = {};
+    Object.keys(chats).forEach(roomKey => {
+      if (roomKey.includes(currentUser.uid)) {
+        const otherUserId = roomKey.replace(currentUser.uid, '').replace('_', '');
+        let count = 0;
+        const msgs = chats[roomKey];
+        Object.keys(msgs).forEach(msgKey => {
+          const m = msgs[msgKey];
+          if (m.senderId !== currentUser.uid && !m.read) {
+            count++;
+          }
+        });
+        unreadCounts[otherUserId] = count;
+      }
+    });
 
-    // Render Groups First
-    Object.keys(groups).forEach(gId => {
-      const g = groups[gId];
-      if (g.members && g.members[currentUser.uid]) {
+    renderSidebar();
+  });
+}
+
+function renderSidebar() {
+  const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
+  userList.innerHTML = '';
+
+  // Render Groups
+  Object.keys(cacheGroups).forEach(gId => {
+    const g = cacheGroups[gId];
+    if (g.members && g.members[currentUser.uid]) {
+      if (!query || g.name.toLowerCase().includes(query)) {
         const item = document.createElement('div');
         item.className = `user-item ${activeTargetId === gId ? 'active' : ''}`;
         item.innerHTML = `
           <img src="https://cdn-icons-png.flaticon.com/512/615/615075.png" class="avatar" />
-          <div>
+          <div class="user-details">
             <h4>👥 ${g.name}</h4>
             <span class="status-text">Group Cluster</span>
           </div>
@@ -164,26 +195,42 @@ function loadSidebar() {
         item.onclick = () => selectChatTarget(gId, g.name, "https://cdn-icons-png.flaticon.com/512/615/615075.png", true);
         userList.appendChild(item);
       }
-    });
+    }
+  });
 
-    // Render Users
-    Object.keys(users).forEach(uId => {
-      const u = users[uId];
-      if (uId !== currentUser.uid) {
+  // Render Users
+  Object.keys(cacheUsers).forEach(uId => {
+    const u = cacheUsers[uId];
+    if (uId !== currentUser.uid) {
+      const matchName = u.name && u.name.toLowerCase().includes(query);
+      const matchId = u.uid && u.uid.toLowerCase().includes(query);
+
+      if (!query || matchName || matchId) {
+        const unreadCount = unreadCounts[uId] || 0;
         const item = document.createElement('div');
         item.className = `user-item ${activeTargetId === uId ? 'active' : ''}`;
+        
         item.innerHTML = `
           <img src="${u.photoURL}" class="avatar" />
-          <div>
+          <div class="user-details">
             <h4>${u.name}</h4>
             <span class="status-text">${u.status || 'offline'}</span>
           </div>
+          ${unreadCount > 0 ? `<span class="unread-badge">${unreadCount}</span>` : ''}
         `;
         item.onclick = () => selectChatTarget(uId, u.name, u.photoURL, false);
         userList.appendChild(item);
       }
-    });
+    }
   });
+
+  if (userList.children.length === 0) {
+    userList.innerHTML = `<div class="empty-notice" style="padding: 15px;">> No node found matching query</div>`;
+  }
+}
+
+if (searchInput) {
+  searchInput.addEventListener('input', renderSidebar);
 }
 
 function selectChatTarget(id, name, avatar, isGroup) {
@@ -199,7 +246,7 @@ function selectChatTarget(id, name, avatar, isGroup) {
   if (!isGroup) {
     db.ref('users/' + id).on('value', (snap) => {
       const d = snap.val();
-      activeStatus.innerText = d ? d.status.toUpperCase() : "OFFLINE";
+      activeStatus.innerText = d ? (d.status || 'OFFLINE').toUpperCase() : "OFFLINE";
     });
   } else {
     activeStatus.innerText = "CLUSTER_ACTIVE";
@@ -208,7 +255,7 @@ function selectChatTarget(id, name, avatar, isGroup) {
   listenMessages();
 }
 
-// --- 3. MESSAGING & VS CODE SNIPPET ---
+// --- 3. MESSAGING & READ TICK STATUS ---
 
 function getRoomPath() {
   if (isGroupChat) return `group_chats/${activeTargetId}`;
@@ -219,16 +266,24 @@ function getRoomPath() {
 
 function listenMessages() {
   const path = getRoomPath();
-  db.ref(path).on('value', (snapshot) => {
+  const ref = db.ref(path);
+
+  ref.on('value', (snapshot) => {
     messagesBox.innerHTML = '';
     snapshot.forEach((child) => {
       const msg = child.val();
+      const msgKey = child.key;
       const isSent = msg.senderId === currentUser.uid;
+
+      // Update unread to read when viewing chat
+      if (!isSent && !msg.read) {
+        ref.child(msgKey).update({ read: true });
+      }
 
       const div = document.createElement('div');
       div.className = `msg-wrapper ${isSent ? 'sent' : 'received'}`;
 
-      let content = `<p>${msg.text}</p>`;
+      let content = `<p>${escapeHTML(msg.text || '')}</p>`;
 
       if (msg.type === 'image') {
         content = `
@@ -241,35 +296,45 @@ function listenMessages() {
         content = `
           <div class="vscode-block">
             <div class="vscode-header">
-              <span>📄 ${msg.lang.toUpperCase()}</span>
+              <span>📄 ${(msg.lang || 'code').toUpperCase()}</span>
               <button class="copy-btn" onclick="copyCode(this)">Copy Code</button>
             </div>
-            <pre><code class="language-${msg.lang}">${escapeHTML(msg.code)}</code></pre>
+            <pre><code class="language-${msg.lang}">${escapeHTML(msg.code || '')}</code></pre>
           </div>`;
-      }
-      else if (msg.type === 'poll') {
-        content = `<b>📊 POLL: ${msg.text}</b>`;
       }
 
       const time = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+      // Double checkmarks icon for read status
+      let statusTicks = '';
+      if (isSent && !isGroupChat) {
+        if (msg.read) {
+          statusTicks = `<span class="read-status read" title="Read"><i class="fa-solid fa-check-double"></i></span>`;
+        } else {
+          statusTicks = `<span class="read-status unread" title="Sent"><i class="fa-solid fa-check"></i></span>`;
+        }
+      }
 
       div.innerHTML = `
         <div class="msg-bubble">
           ${isGroupChat && !isSent ? `<div class="msg-sender">${msg.senderName || 'User'}</div>` : ''}
           ${content}
-          <span class="msg-time">${time}</span>
+          <div class="msg-meta">
+            <span class="msg-time">${time}</span>
+            ${statusTicks}
+          </div>
         </div>
       `;
       messagesBox.appendChild(div);
     });
 
-    Prism.highlightAll(); // Apply VS Code syntax highlighting
+    Prism.highlightAll();
     messagesBox.scrollTop = messagesBox.scrollHeight;
   });
 }
 
 function escapeHTML(str) {
-  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 function copyCode(btn) {
@@ -293,13 +358,14 @@ function sendMsg() {
       senderName: uData.name || 'User',
       text: txt,
       timestamp: Date.now(),
-      type: 'text'
+      type: 'text',
+      read: false
     });
     msgInput.value = '';
   });
 }
 
-// --- 4. ATTACHMENT MENU (IMAGE / CODE / POLL) ---
+// --- 4. ATTACHMENT MENU ---
 
 attachBtn.onclick = (e) => {
   e.stopPropagation();
@@ -307,7 +373,6 @@ attachBtn.onclick = (e) => {
 };
 document.onclick = () => attachMenu.classList.add('hidden');
 
-// Share Image
 imgUpload.onchange = (e) => {
   const file = e.target.files[0];
   if (!file || !activeTargetId) return;
@@ -318,13 +383,13 @@ imgUpload.onchange = (e) => {
       senderId: currentUser.uid,
       fileUrl: ev.target.result,
       timestamp: Date.now(),
-      type: 'image'
+      type: 'image',
+      read: false
     });
   };
   reader.readAsDataURL(file);
 };
 
-// Share Code Modal
 shareCodeBtn.onclick = () => codeModal.classList.remove('hidden');
 closeCodeModal.onclick = () => codeModal.classList.add('hidden');
 
@@ -338,14 +403,15 @@ sendCodeBtn.onclick = () => {
     code: code,
     lang: lang,
     timestamp: Date.now(),
-    type: 'code'
+    type: 'code',
+    read: false
   });
 
   codeTextArea.value = '';
   codeModal.classList.add('hidden');
 };
 
-// --- 5. GROUP CREATION SYSTEM ---
+// --- 5. GROUPS ---
 
 createGroupBtn.onclick = () => {
   db.ref('users').once('value').then((snap) => {
@@ -374,7 +440,7 @@ submitGroupBtn.onclick = () => {
 
   const checkboxes = groupMemberList.querySelectorAll('input[type="checkbox"]:checked');
   const members = {};
-  members[currentUser.uid] = true; // Include self
+  members[currentUser.uid] = true;
 
   checkboxes.forEach(cb => members[cb.value] = true);
 
@@ -390,7 +456,7 @@ submitGroupBtn.onclick = () => {
   });
 };
 
-// --- 6. PROFILE CONFIG (FIXED) ---
+// --- 6. PROFILE CONFIG ---
 
 editProfileBtn.onclick = () => {
   db.ref('users/' + currentUser.uid).once('value').then((snapshot) => {
