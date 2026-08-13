@@ -10,7 +10,7 @@ const firebaseConfig = {
   measurementId: "G-4CVCPRCVJX"
 };
 
-// Initialize Firebase App
+// Initialize Firebase
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.database();
@@ -22,7 +22,7 @@ let isSignUpMode = false;
 let typingTimeout = null;
 let tempAvatarBase64 = null;
 
-// DOM Selectors
+// DOM Elements
 const authOverlay = document.getElementById('authOverlay');
 const authForm = document.getElementById('authForm');
 const authTitle = document.getElementById('authTitle');
@@ -64,11 +64,11 @@ const backBtn = document.getElementById('backBtn');
 toggleAuthBtn.addEventListener('click', (e) => {
   e.preventDefault();
   isSignUpMode = !isSignUpMode;
-  authTitle.innerText = isSignUpMode ? "Create Account" : "Sign In";
-  authBtn.innerText = isSignUpMode ? "Sign Up" : "Sign In";
+  authTitle.innerText = isSignUpMode ? "> REGISTER_NODE" : "> SYSTEM_LOGIN";
+  authBtn.innerText = isSignUpMode ? "EXECUTE_REGISTER" : "EXECUTE_LOGIN";
   nameGroup.style.display = isSignUpMode ? "block" : "none";
-  toggleText.innerText = isSignUpMode ? "Already have an account?" : "Don't have an account?";
-  toggleAuthBtn.innerText = isSignUpMode ? "Sign In" : "Sign Up";
+  toggleText.innerText = isSignUpMode ? "Node already registered?" : "New access node?";
+  toggleAuthBtn.innerText = isSignUpMode ? "LOGIN_NODE" : "REGISTER_USER";
 });
 
 authForm.addEventListener('submit', (e) => {
@@ -89,9 +89,9 @@ authForm.addEventListener('submit', (e) => {
         photoURL: defaultImg,
         status: "online"
       });
-    }).catch(err => alert(err.message));
+    }).catch(err => alert("AUTH_ERROR: " + err.message));
   } else {
-    auth.signInWithEmailAndPassword(email, password).catch(err => alert(err.message));
+    auth.signInWithEmailAndPassword(email, password).catch(err => alert("AUTH_ERROR: " + err.message));
   }
 });
 
@@ -101,10 +101,9 @@ auth.onAuthStateChanged((user) => {
     authOverlay.classList.add('hidden');
     appContainer.classList.remove('hidden');
 
-    myName.innerText = user.displayName || "User";
+    myName.innerText = user.displayName || "root@user";
     myAvatar.src = user.photoURL || "https://via.placeholder.com/100";
 
-    // Set online status
     db.ref('users/' + user.uid).update({ status: 'online' });
     db.ref('users/' + user.uid).onDisconnect().update({ status: 'offline' });
 
@@ -122,7 +121,7 @@ logoutBtn.addEventListener('click', () => {
   }
 });
 
-// --- 2. USERS LIST & CHAT SELECTION ---
+// --- 2. USERS LIST ---
 
 function loadUsers() {
   db.ref('users').on('value', (snapshot) => {
@@ -148,21 +147,20 @@ function loadUsers() {
 
 function selectChatUser(user) {
   activeChatUserId = user.uid;
-  activeName.innerText = user.name;
+  activeName.innerText = "> " + user.name;
   activeAvatar.src = user.photoURL;
   msgInput.disabled = false;
   sendBtn.disabled = false;
 
   appContainer.classList.add('mobile-active');
 
-  // Track status & typing indicator
   db.ref('users/' + user.uid).on('value', (snap) => {
     const d = snap.val();
-    if (d.typingTo === currentUser.uid) {
-      activeStatus.innerText = "typing...";
+    if (d && d.typingTo === currentUser.uid) {
+      activeStatus.innerText = "TRANSMITTING_DATA...";
       activeStatus.classList.add('typing');
     } else {
-      activeStatus.innerText = d.status || "offline";
+      activeStatus.innerText = d ? d.status.toUpperCase() : "OFFLINE";
       activeStatus.classList.remove('typing');
     }
   });
@@ -170,7 +168,7 @@ function selectChatUser(user) {
   listenMessages();
 }
 
-// --- 3. REALTIME MESSAGING & SEEN STATUS ---
+// --- 3. REALTIME MESSAGING ---
 
 function getRoomId() {
   return currentUser.uid < activeChatUserId 
@@ -186,7 +184,6 @@ function listenMessages() {
       const msg = child.val();
       const isSent = msg.senderId === currentUser.uid;
 
-      // Update seen status
       if (!isSent && !msg.seen) {
         db.ref(`chats/${roomId}/${child.key}`).update({ seen: true });
       }
@@ -196,7 +193,7 @@ function listenMessages() {
 
       let content = `<p>${msg.text}</p>`;
       if (msg.type === 'image') content = `<img src="${msg.fileUrl}" class="msg-img"/>`;
-      if (msg.type === 'poll') content = `<b>📊 Poll: ${msg.text}</b>`;
+      if (msg.type === 'poll') content = `<b>📊 POLL: ${msg.text}</b>`;
 
       const time = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -215,7 +212,6 @@ function listenMessages() {
   });
 }
 
-// Send Message
 sendBtn.addEventListener('click', sendMsg);
 msgInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMsg(); });
 
@@ -236,7 +232,6 @@ function sendMsg() {
   db.ref('users/' + currentUser.uid).update({ typingTo: null });
 }
 
-// Typing status tracker
 msgInput.addEventListener('input', () => {
   if (!activeChatUserId) return;
   db.ref('users/' + currentUser.uid).update({ typingTo: activeChatUserId });
@@ -247,7 +242,7 @@ msgInput.addEventListener('input', () => {
   }, 1500);
 });
 
-// --- 4. MEDIA UPLOAD (BASE64 DIRECT) & POLL ---
+// --- 4. ATTACHMENT & PAYLOAD ---
 
 attachBtn.onclick = (e) => {
   e.stopPropagation();
@@ -255,19 +250,16 @@ attachBtn.onclick = (e) => {
 };
 document.onclick = () => attachMenu.classList.add('hidden');
 
-// Image Upload without Firebase Storage
 imgUpload.onchange = (e) => {
   const file = e.target.files[0];
   if (!file || !activeChatUserId) return;
 
   const reader = new FileReader();
   reader.onload = (event) => {
-    const base64Image = event.target.result;
     const roomId = getRoomId();
-
     db.ref('chats/' + roomId).push({
       senderId: currentUser.uid,
-      fileUrl: base64Image,
+      fileUrl: event.target.result,
       timestamp: Date.now(),
       seen: false,
       type: 'image'
@@ -290,7 +282,7 @@ createPollBtn.onclick = () => {
   }
 };
 
-// --- 5. EDIT PROFILE ---
+// --- 5. EDIT PROFILE (FIXED SAVE BUTTON) ---
 
 editProfileBtn.onclick = () => {
   editNameInput.value = currentUser.displayName || '';
@@ -298,6 +290,7 @@ editProfileBtn.onclick = () => {
   tempAvatarBase64 = null;
   profileModal.classList.remove('hidden');
 };
+
 closeModal.onclick = () => profileModal.classList.add('hidden');
 
 newAvatarInput.onchange = (e) => {
@@ -314,19 +307,35 @@ newAvatarInput.onchange = (e) => {
 
 profileForm.onsubmit = async (e) => {
   e.preventDefault();
+  
+  const newName = editNameInput.value.trim() || currentUser.displayName;
   const imgUrl = tempAvatarBase64 || currentUser.photoURL;
-  const newName = editNameInput.value || currentUser.displayName;
 
-  await currentUser.updateProfile({ displayName: newName, photoURL: imgUrl });
-  await db.ref('users/' + currentUser.uid).update({
-    name: newName,
-    photoURL: imgUrl,
-    phone: editPhoneInput.value || ''
-  });
+  try {
+    // 1. Update Firebase Auth Profile
+    await currentUser.updateProfile({ 
+      displayName: newName, 
+      photoURL: imgUrl 
+    });
 
-  myName.innerText = newName;
-  myAvatar.src = imgUrl;
-  profileModal.classList.add('hidden');
+    // 2. Update Realtime Database
+    await db.ref('users/' + currentUser.uid).update({
+      name: newName,
+      photoURL: imgUrl,
+      phone: editPhoneInput.value.trim() || ''
+    });
+
+    // 3. Update UI instantly
+    myName.innerText = newName;
+    myAvatar.src = imgUrl;
+
+    // 4. Close Modal
+    profileModal.classList.add('hidden');
+    alert("[SYSTEM_NOTICE]: Config updated successfully!");
+
+  } catch (error) {
+    alert("[ERROR]: Failed to update config - " + error.message);
+  }
 };
 
 backBtn.onclick = () => appContainer.classList.remove('mobile-active');
