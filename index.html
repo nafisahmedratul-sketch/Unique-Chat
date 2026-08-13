@@ -3,13 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PulseChat - Hacker Terminal Edition</title>
+  <title>PulseChat - Cyberpunk VS Code Edition</title>
   <link rel="stylesheet" href="style.css" />
-  <!-- Google Fonts for Terminal/Hacker Look -->
+  <!-- Google Fonts -->
   <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600;700&display=swap" rel="stylesheet">
   <!-- Font Awesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
-  
+  <!-- Prism JS for VS Code Syntax Highlighting -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+
   <!-- Firebase Compatibility SDKs -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
@@ -17,7 +19,7 @@
 </head>
 <body>
 
-  <!-- Top Creator Banner -->
+  <!-- Top Banner -->
   <header class="creator-header">
     <div class="creator-badge">
       <i class="fa-solid fa-terminal"></i> SYSTEM_INITIALIZED // Developed by <span>Nafis Ahmed Ratul</span>
@@ -28,9 +30,7 @@
   <div class="auth-overlay" id="authOverlay">
     <div class="auth-card">
       <div class="terminal-bar">
-        <span class="dot red"></span>
-        <span class="dot yellow"></span>
-        <span class="dot green"></span>
+        <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
         <span class="title">auth_gateway.exe</span>
       </div>
       <h2 id="authTitle">> SYSTEM_LOGIN</h2>
@@ -62,19 +62,18 @@
     <!-- Left Sidebar -->
     <aside class="sidebar">
       <div class="sidebar-header">
-        <div class="my-profile" id="openProfileBtn">
+        <div class="my-profile">
           <img src="https://via.placeholder.com/100" id="myAvatar" class="avatar" />
         </div>
         <h3 id="myName">root@user</h3>
         <div class="actions">
+          <button class="icon-btn" id="createGroupBtn" title="Create Group"><i class="fa-solid fa-users-medical"></i></button>
           <button class="icon-btn" id="editProfileBtn" title="Edit Profile"><i class="fa-solid fa-user-gear"></i></button>
           <button class="icon-btn" id="logoutBtn" title="Logout"><i class="fa-solid fa-power-off"></i></button>
         </div>
       </div>
 
-      <div class="user-list" id="userList">
-        <!-- Live users will load here -->
-      </div>
+      <div class="user-list" id="userList"></div>
     </aside>
 
     <!-- Main Chat Window -->
@@ -92,13 +91,14 @@
 
       <!-- Messages Stream -->
       <div class="messages-box" id="messagesBox">
-        <div class="empty-notice">> Connection established. Select a target node to initiate data transfer.</div>
+        <div class="empty-notice">> Connection established. Select a target node or group to initiate communication.</div>
       </div>
 
-      <!-- Quick Media Upload Menu -->
+      <!-- Attachment Menu -->
       <div class="attachment-menu hidden" id="attachMenu">
         <label for="imgUpload" class="attach-item"><i class="fa-solid fa-file-image"></i> TRANSMIT_PAYLOAD_IMG</label>
         <input type="file" id="imgUpload" accept="image/*" hidden />
+        <button class="attach-item" id="shareCodeBtn"><i class="fa-solid fa-code"></i> SHARE_SOURCE_CODE</button>
         <button class="attach-item" id="createPollBtn"><i class="fa-solid fa-square-poll-vertical"></i> INITIATE_POLL</button>
       </div>
 
@@ -116,9 +116,7 @@
   <div class="modal-overlay hidden" id="profileModal">
     <div class="modal-card">
       <div class="terminal-bar">
-        <span class="dot red"></span>
-        <span class="dot yellow"></span>
-        <span class="dot green"></span>
+        <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
         <span class="title">config_user.sh</span>
       </div>
       <div class="modal-header">
@@ -143,6 +141,65 @@
       </form>
     </div>
   </div>
+
+  <!-- Code Snippet Modal -->
+  <div class="modal-overlay hidden" id="codeModal">
+    <div class="modal-card code-modal">
+      <div class="terminal-bar">
+        <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+        <span class="title">code_editor.vsc</span>
+      </div>
+      <div class="modal-header">
+        <h3>> SHARE_SOURCE_CODE</h3>
+        <button class="icon-btn" id="closeCodeModal"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="input-group">
+        <label>[SELECT_LANGUAGE]</label>
+        <select id="codeLangSelect" class="cyber-select">
+          <option value="javascript">JavaScript</option>
+          <option value="python">Python</option>
+          <option value="c">C / C++</option>
+          <option value="html">HTML</option>
+          <option value="css">CSS</option>
+          <option value="java">Java</option>
+        </select>
+      </div>
+      <div class="input-group">
+        <label>[PASTE_CODE_HERE]</label>
+        <textarea id="codeTextArea" rows="8" placeholder="// Write or paste your code here..."></textarea>
+      </div>
+      <button class="primary-btn" id="sendCodeBtn">TRANSMIT_CODE</button>
+    </div>
+  </div>
+
+  <!-- Create Group Modal -->
+  <div class="modal-overlay hidden" id="groupModal">
+    <div class="modal-card">
+      <div class="terminal-bar">
+        <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+        <span class="title">create_cluster.sh</span>
+      </div>
+      <div class="modal-header">
+        <h3>> CREATE_GROUP_CLUSTER</h3>
+        <button class="icon-btn" id="closeGroupModal"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="input-group">
+        <label>[CLUSTER_NAME]</label>
+        <input type="text" id="groupNameInput" placeholder="Enter group name..." />
+      </div>
+      <div class="input-group">
+        <label>[SELECT_MEMBERS]</label>
+        <div id="groupMemberList" class="member-select-list"></div>
+      </div>
+      <button class="primary-btn" id="submitGroupBtn">INITIALIZE_CLUSTER</button>
+    </div>
+  </div>
+
+  <!-- Prism JS for Code Highlighting -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-c.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
 
   <script src="script.js"></script>
 </body>
