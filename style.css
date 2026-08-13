@@ -1,6 +1,6 @@
 :root {
   --bg-dark: #070c0a;
-  --panel-bg: rgba(12, 24, 18, 0.95); /* Opacity high for crystal clarity */
+  --panel-bg: rgba(12, 24, 18, 0.95);
   --border-color: #00ff6644;
   --primary: #00ff66;
   --primary-glow: #00ff6666;
@@ -17,7 +17,6 @@
 
 body {
   background: var(--bg-dark);
-  /* Reduced background pattern opacity for maximum text clarity */
   background-image: radial-gradient(rgba(0, 255, 102, 0.08) 1px, transparent 0);
   background-size: 28px 28px;
   color: var(--text-light);
@@ -88,13 +87,41 @@ body {
 .icon-btn { background: none; border: none; color: var(--text-muted); font-size: 1.1rem; cursor: pointer; padding: 6px; }
 .icon-btn:hover { color: var(--primary); }
 
+/* Search Box */
+.search-box {
+  padding: 8px 12px;
+  background: #000;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.search-icon { color: var(--text-muted); font-size: 0.85rem; }
+.search-box input {
+  width: 100%; background: transparent; border: none; outline: none;
+  color: var(--primary); font-size: 0.8rem; font-family: 'Fira Code', monospace;
+}
+.search-box input::placeholder { color: var(--text-muted); }
+
 .user-list { flex: 1; overflow-y: auto; }
 .user-item {
   display: flex; align-items: center; gap: 12px; padding: 12px 16px;
-  cursor: pointer; border-bottom: 1px solid #00ff6611; transition: 0.2s;
+  cursor: pointer; border-bottom: 1px solid #00ff6611; transition: 0.2s; position: relative;
 }
 .user-item:hover, .user-item.active { background: #00ff6622; border-left: 3px solid var(--primary); }
-.user-item h4 { font-size: 0.85rem; color: #fff; }
+.user-details { flex: 1; overflow: hidden; }
+.user-item h4 { font-size: 0.85rem; color: #fff; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
+
+/* Unread Badge Component */
+.unread-badge {
+  background: var(--primary);
+  color: #000;
+  font-size: 0.7rem;
+  font-weight: bold;
+  padding: 2px 6px;
+  border-radius: 10px;
+  box-shadow: 0 0 8px var(--primary-glow);
+}
 
 /* Chat Window */
 .chat-window { flex: 1; position: relative; }
@@ -121,9 +148,21 @@ body {
 .received .msg-bubble { background: var(--rec-msg); color: var(--accent-cyan); border-color: var(--accent-cyan); }
 
 .msg-sender { font-size: 0.7rem; color: var(--accent-cyan); margin-bottom: 4px; font-weight: bold; }
-.msg-time { display: block; font-size: 0.65rem; color: var(--text-muted); margin-top: 6px; text-align: right; }
 
-/* Image Container with Download Option */
+/* Read Status Formatting */
+.msg-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 4px;
+}
+.msg-time { font-size: 0.65rem; color: var(--text-muted); }
+.read-status { font-size: 0.75rem; }
+.read-status.unread { color: var(--text-muted); }
+.read-status.read { color: var(--primary); text-shadow: 0 0 5px var(--primary); }
+
+/* Image Container */
 .img-container { position: relative; margin-top: 5px; }
 .msg-img { max-width: 260px; border-radius: 2px; border: 1px solid var(--primary); display: block; }
 .dl-btn {
@@ -132,7 +171,7 @@ body {
 }
 .dl-btn:hover { background: var(--primary); color: #000; }
 
-/* VS Code Terminal Block */
+/* VS Code Block */
 .vscode-block {
   background: var(--vscode-bg) !important; border: 1px solid #444; border-radius: 4px;
   overflow: hidden; margin-top: 6px; width: 100%; min-width: 280px;
@@ -169,7 +208,7 @@ body {
 }
 .attach-item:hover { background: var(--primary); color: #000; }
 
-/* Modal Styles */
+/* Modals */
 .modal-overlay {
   position: fixed; inset: 0; background: rgba(0, 0, 0, 0.9);
   display: flex; align-items: center; justify-content: center; z-index: 1000;
