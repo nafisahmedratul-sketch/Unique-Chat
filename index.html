@@ -36,7 +36,7 @@
       <h2 id="authTitle">> SYSTEM_LOGIN</h2>
       <form id="authForm">
         <div class="input-group" id="nameGroup" style="display: none;">
-          <label>[USER_ALIAS]</label>
+          <label>[USER_NAME]</label>
           <input type="text" id="authName" placeholder="Enter handle..." />
         </div>
         <div class="input-group">
@@ -96,11 +96,17 @@
             <span class="status-text" id="activeStatus">Developer:Nafis Ahmed Ratul</span>
           </div>
         </div>
-        <!-- CALL BUTTONS IN HEADER -->
+        <!-- CALL & BLOCK BUTTONS IN HEADER -->
         <div class="call-actions hidden" id="callActions">
+          <button class="icon-btn" id="blockBtn" title="Block User"><i class="fa-solid fa-shield-halved"></i></button>
           <button class="icon-btn call-btn" id="audioCallBtn" title="Audio Call"><i class="fa-solid fa-phone"></i></button>
           <button class="icon-btn call-btn" id="videoCallBtn" title="Video Call"><i class="fa-solid fa-video"></i></button>
         </div>
+      </div>
+
+      <!-- Block Status Notice Bar -->
+      <div class="block-notice-bar hidden" id="blockNoticeBar">
+        <span id="blockNoticeText">> ACCESS RESTRICTED</span>
       </div>
 
       <!-- Messages Stream -->
@@ -240,7 +246,7 @@
     </div>
   </div>
 
-  <!-- CALL MODAL / SCREEN (WebRTC Audio & Video Call Interface) -->
+  <!-- CALL MODAL / SCREEN -->
   <div class="call-overlay hidden" id="callOverlay">
     <div class="call-card">
       <div class="call-header-bar">
